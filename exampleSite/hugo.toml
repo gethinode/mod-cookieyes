@@ -12,4 +12,4 @@ title = 'Test site for mod-cookieyes'
   [[module.imports]]
     path = "github.com/gethinode/mod-cookieyes/v2"
   [[module.imports]]
-    path = "github.com/gethinode/mod-utils/v2"
+    path = "github.com/gethinode/mod-utils/v5"
