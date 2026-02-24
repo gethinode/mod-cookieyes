@@ -8,9 +8,14 @@
 
     When a site is framed by a different origin, browsers treat its cookies as third-party
     and block them by default. The Storage Access API lets the embedded page request
-    first-party cookie access after a qualifying user gesture. We intercept CookieYes
-    consent button clicks (capture phase), obtain storage access, then re-dispatch the
-    click so CookieYes can write the consent cookie with access now available.
+    first-party cookie access after a qualifying user gesture.
+
+    Strategy: listen for pointerdown on CookieYes consent buttons. pointerdown fires
+    before click, so requestStorageAccess() can resolve as a microtask before CookieYes
+    writes the consent cookie during the subsequent click event. The banner dismisses
+    naturally without any click interception. A post-action check reloads once as a
+    fallback when the grant races the cookie write (e.g. Safari); storage access is
+    then auto-granted on reload and the next consent action persists permanently.
 
     Requirements on the embedding side:
       - The <iframe> must carry allow="storage-access"
@@ -18,6 +23,8 @@
 */
 (function () {
     'use strict';
+
+    var SELECTORS = '.cky-btn-accept-all, .cky-btn-reject-all, .cky-btn-accept, .cky-btn-reject, .cky-btn-save';
 
     /** Returns true when running inside a cross-site iframe. */
     function isInCrossSiteIframe() {
@@ -36,41 +43,40 @@
         return;
     }
 
-    function attachInterceptor() {
-        var pending = false;
-
-        // Capture-phase listener fires before CookieYes handles the click.
-        document.addEventListener('click', function handler(e) {
-            if (pending) { return; }
-
-            var target = e.target;
-            var btn = target && typeof target.closest === 'function'
-                ? target.closest('.cky-btn-accept-all, .cky-btn-reject-all, .cky-btn-accept, .cky-btn-reject, .cky-btn-save')
+    function attachHandler() {
+        // pointerdown fires before click, giving requestStorageAccess() time to resolve
+        // as a microtask before CookieYes writes the consent cookie on the click event.
+        document.addEventListener('pointerdown', function handler(e) {
+            var btn = e.target && typeof e.target.closest === 'function'
+                ? e.target.closest(SELECTORS)
                 : null;
 
             if (!btn) { return; }
 
-            pending = true;
-            e.preventDefault();
-            e.stopImmediatePropagation();
+            document.removeEventListener('pointerdown', handler, true);
 
-            var redispatch = function () {
-                pending = false;
-                document.removeEventListener('click', handler, true);
-                // Re-dispatch so CookieYes processes the click with storage access now granted.
-                btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-            };
-
-            document.requestStorageAccess().then(redispatch, redispatch);
+            document.requestStorageAccess().then(function () {
+                // Storage access granted. Verify the consent cookie was written to the
+                // unpartitioned jar. If not (timing race), reload once: the browser will
+                // auto-grant storage access on the next load and the repeat consent action
+                // will persist.
+                setTimeout(function () {
+                    if (document.cookie.indexOf('cookieyes-consent') === -1) {
+                        window.location.reload();
+                    }
+                }, 500);
+            }, function () {
+                // Access denied — cannot persist consent in this context.
+            });
         }, true);
     }
 
     // Skip setup if storage access is already available.
     if (typeof document.hasStorageAccess === 'function') {
         document.hasStorageAccess().then(function (hasAccess) {
-            if (!hasAccess) { attachInterceptor(); }
-        }, attachInterceptor);
+            if (!hasAccess) { attachHandler(); }
+        }, attachHandler);
     } else {
-        attachInterceptor();
+        attachHandler();
     }
 }());
