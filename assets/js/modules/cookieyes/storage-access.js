@@ -18,14 +18,19 @@
        This resolves the issue for the majority of browsers that allow SameSite=None
        third-party cookies (current Chrome default).
 
-    2. document.requestStorageAccess() on pointerdown
+    2. Click interception + requestStorageAccess() + performBannerAction()
        For browsers that block all third-party cookies regardless of SameSite
-       (Firefox Strict, Safari ITP, Chrome with third-party cookies disabled):
-       request unpartitioned (first-party) cookie access within the user gesture
-       context of the pointerdown event. pointerdown fires before click, so the
-       Promise can resolve as a microtask before CookieYes writes the cookie on click.
-       If granted, the SameSite=None cookie is written to the unpartitioned jar and
-       persists across sessions.
+       (Firefox Strict, Safari ITP including all iOS browsers, Chrome with third-party
+       cookies disabled):
+       - Intercept the click on CookieYes buttons (capture phase, before CookieYes).
+       - stopImmediatePropagation() prevents CookieYes from processing the isTrusted
+         click event (CookieYes checks event.isTrusted and rejects synthetic events).
+       - requestStorageAccess() is awaited via .then() so the grant is in effect before
+         the cookie is written.
+       - window.performBannerAction() is CookieYes's own public API and calls the
+         internal consent handler with {isTrusted: true}, bypassing the isTrusted check.
+       This handler is only attached when hasStorageAccess() returns false, so desktop
+       Chrome users (who don't need it) are unaffected.
 
     Requirements on the embedding side:
       - The <iframe> must carry allow="storage-access"
@@ -34,7 +39,16 @@
 (function () {
     'use strict';
 
-    var SELECTORS = '.cky-btn-accept-all, .cky-btn-reject-all, .cky-btn-accept, .cky-btn-reject, .cky-btn-save';
+    /** Maps CookieYes button classes to performBannerAction() argument values. */
+    var ACTION_MAP = {
+        'cky-btn-accept-all': 'accept_all',
+        'cky-btn-accept':     'accept_partial',
+        'cky-btn-save':       'accept_partial',
+        'cky-btn-reject-all': 'reject',
+        'cky-btn-reject':     'reject'
+    };
+
+    var SELECTORS = Object.keys(ACTION_MAP).map(function (c) { return '.' + c; }).join(', ');
 
     /** Returns true when running inside a cross-site iframe. */
     function isInCrossSiteIframe() {
@@ -57,25 +71,55 @@
     window.ckySettings = window.ckySettings || {};
     window.ckySettings.iframeSupport = true;
 
-    // Layer 2: request unpartitioned storage access for browsers that block SameSite=None
-    // third-party cookies. pointerdown precedes click, giving requestStorageAccess()
-    // time to resolve before CookieYes writes the cookie.
+    // Layer 2: for browsers that block all third-party cookies regardless of SameSite
+    // (Firefox Strict, Safari ITP, all iOS browsers, Chrome with third-party cookies
+    // disabled), intercept CookieYes button clicks and use the Storage Access API to
+    // gain unpartitioned cookie access before invoking the consent action.
     if (typeof document.requestStorageAccess !== 'function') { return; }
 
+    /** Returns the performBannerAction argument for the given button, or null. */
+    function getAction(btn) {
+        for (var cls in ACTION_MAP) {
+            if (btn.classList.contains(cls)) { return ACTION_MAP[cls]; }
+        }
+        return null;
+    }
+
     function attachHandler() {
-        document.addEventListener('pointerdown', function handler(e) {
+        document.addEventListener('click', function handler(e) {
             var btn = e.target && typeof e.target.closest === 'function'
                 ? e.target.closest(SELECTORS)
                 : null;
 
             if (!btn) { return; }
 
-            document.removeEventListener('pointerdown', handler, true);
-            document.requestStorageAccess();
+            var action = getAction(btn);
+            if (!action) { return; }
+
+            // Remove our handler and prevent CookieYes from receiving this click.
+            // CookieYes checks event.isTrusted and ignores synthetic re-dispatches,
+            // so we use performBannerAction() after the storage access grant instead.
+            document.removeEventListener('click', handler, true);
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            function invoke() {
+                if (typeof window.performBannerAction === 'function') {
+                    window.performBannerAction(action);
+                }
+            }
+
+            // Request unpartitioned storage access within the user gesture context of
+            // the click event, then invoke the consent action. On denial (e.g. user
+            // dismissed Safari's permission sheet), invoke anyway so the banner closes;
+            // the cookie will not persist but the UX is not broken.
+            document.requestStorageAccess().then(invoke, invoke);
         }, true);
     }
 
-    // Skip setup if storage access is already available.
+    // Only attach the handler when storage access is not already available.
+    // On desktop Chrome (SameSite=None allowed), hasStorageAccess() returns true
+    // and Layer 1 alone is sufficient — no click interception needed.
     if (typeof document.hasStorageAccess === 'function') {
         document.hasStorageAccess().then(function (hasAccess) {
             if (!hasAccess) { attachHandler(); }
