@@ -6,16 +6,26 @@
     Storage Access API integration for CookieYes.
     Enables consent persistence when the site is embedded in a cross-site iframe.
 
-    When a site is framed by a different origin, browsers treat its cookies as third-party
-    and block them by default. The Storage Access API lets the embedded page request
-    first-party cookie access after a qualifying user gesture.
+    CookieYes sets the consent cookie with SameSite=Strict by default, which the
+    browser silently blocks in any cross-site iframe context. The banner then never
+    dismisses because CookieYes reads the cookie back to confirm the write succeeded.
 
-    Strategy: listen for pointerdown on CookieYes consent buttons. pointerdown fires
-    before click, so requestStorageAccess() can resolve as a microtask before CookieYes
-    writes the consent cookie during the subsequent click event. The banner dismisses
-    naturally without any click interception. A post-action check reloads once as a
-    fallback when the grant races the cookie write (e.g. Safari); storage access is
-    then auto-granted on reload and the next consent action persists permanently.
+    Two-layer fix:
+
+    1. window.ckySettings.iframeSupport = true
+       CookieYes's own iframe mode: switches the consent cookie to SameSite=None;Secure,
+       which is the minimum required for a cookie to be readable in a cross-site context.
+       This resolves the issue for the majority of browsers that allow SameSite=None
+       third-party cookies (current Chrome default).
+
+    2. document.requestStorageAccess() on pointerdown
+       For browsers that block all third-party cookies regardless of SameSite
+       (Firefox Strict, Safari ITP, Chrome with third-party cookies disabled):
+       request unpartitioned (first-party) cookie access within the user gesture
+       context of the pointerdown event. pointerdown fires before click, so the
+       Promise can resolve as a microtask before CookieYes writes the cookie on click.
+       If granted, the SameSite=None cookie is written to the unpartitioned jar and
+       persists across sessions.
 
     Requirements on the embedding side:
       - The <iframe> must carry allow="storage-access"
@@ -38,14 +48,21 @@
         }
     }
 
-    // Only relevant in cross-site iframes with Storage Access API support.
-    if (!isInCrossSiteIframe() || typeof document.requestStorageAccess !== 'function') {
-        return;
-    }
+    if (!isInCrossSiteIframe()) { return; }
+
+    // Layer 1: enable CookieYes's built-in iframe mode so the consent cookie is set
+    // with SameSite=None;Secure instead of SameSite=Strict. The setting is read by
+    // CookieYes's _ckySetCookie function at the moment the user accepts or rejects,
+    // so it only needs to be in place before that interaction.
+    window.ckySettings = window.ckySettings || {};
+    window.ckySettings.iframeSupport = true;
+
+    // Layer 2: request unpartitioned storage access for browsers that block SameSite=None
+    // third-party cookies. pointerdown precedes click, giving requestStorageAccess()
+    // time to resolve before CookieYes writes the cookie.
+    if (typeof document.requestStorageAccess !== 'function') { return; }
 
     function attachHandler() {
-        // pointerdown fires before click, giving requestStorageAccess() time to resolve
-        // as a microtask before CookieYes writes the consent cookie on the click event.
         document.addEventListener('pointerdown', function handler(e) {
             var btn = e.target && typeof e.target.closest === 'function'
                 ? e.target.closest(SELECTORS)
@@ -54,20 +71,7 @@
             if (!btn) { return; }
 
             document.removeEventListener('pointerdown', handler, true);
-
-            document.requestStorageAccess().then(function () {
-                // Storage access granted. Verify the consent cookie was written to the
-                // unpartitioned jar. If not (timing race), reload once: the browser will
-                // auto-grant storage access on the next load and the repeat consent action
-                // will persist.
-                setTimeout(function () {
-                    if (document.cookie.indexOf('cookieyes-consent') === -1) {
-                        window.location.reload();
-                    }
-                }, 500);
-            }, function () {
-                // Access denied — cannot persist consent in this context.
-            });
+            document.requestStorageAccess();
         }, true);
     }
 
