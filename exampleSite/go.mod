@@ -4,6 +4,6 @@ go 1.19
 
 require (
 	github.com/gethinode/mod-cookieyes/v2 v2.2.6 // indirect
-	github.com/gethinode/mod-cookieyes/v3 v3.0.1 // indirect
-	github.com/gethinode/mod-utils/v5 v5.11.1 // indirect
+	github.com/gethinode/mod-cookieyes/v3 v3.0.4 // indirect
+	github.com/gethinode/mod-utils/v5 v5.18.0 // indirect
 )
