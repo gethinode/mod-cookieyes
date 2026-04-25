@@ -20,6 +20,7 @@
 
 <!-- Main code -->
 <script src="{{ $args.link }}"
+    {{- with $args.scriptType }}{{ printf ` type="%s"` . | safeHTMLAttr }}{{ end -}}
     {{- with $category }} data-cookieyes="cookieyes-{{ . }}"{{ end -}}
     {{- with $args.integrity }}integrity="{{ . }}" crossorigin="anonymous"{{ end }}
     {{- with $args.state }} {{ . | safeHTMLAttr }}{{ end -}}>
