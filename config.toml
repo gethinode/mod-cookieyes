@@ -15,6 +15,9 @@
 
 [params.modules.cookieyes]
   integration = "critical"
+  # Warm up the connection to the CookieYes CDN so the render-blocking consent script
+  # (which must stay synchronous for prior-consent auto-blocking) starts downloading sooner.
+  preconnect = ["https://cdn-cookieyes.com"]
 
 [params.modules.cookieyes.csp]
   script-src = ["cdn-cookieyes.com"]
