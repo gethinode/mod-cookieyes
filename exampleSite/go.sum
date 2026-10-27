@@ -38,6 +38,8 @@ github.com/gethinode/mod-cookieyes/v3 v3.1.0 h1:wan8yGs1bmwrgdySWSCqDbkiAsbTn8nW
 github.com/gethinode/mod-cookieyes/v3 v3.1.0/go.mod h1:nhLWDG1BCHAPXFdGYYbCrgFbm4XrSOyxbGlZZAeWJsM=
 github.com/gethinode/mod-cookieyes/v3 v3.1.1 h1:q8If0ORhoq91xcZD+qePpGhF6LqZ2lGwOtZEZMZia7k=
 github.com/gethinode/mod-cookieyes/v3 v3.1.1/go.mod h1:nhLWDG1BCHAPXFdGYYbCrgFbm4XrSOyxbGlZZAeWJsM=
+github.com/gethinode/mod-cookieyes/v3 v3.1.2 h1:QlFaAD1QJRcomi5CPyRu1jvhuioDQ9DKWe0d9P+3vBU=
+github.com/gethinode/mod-cookieyes/v3 v3.1.2/go.mod h1:nhLWDG1BCHAPXFdGYYbCrgFbm4XrSOyxbGlZZAeWJsM=
 github.com/gethinode/mod-utils/v2 v2.8.1 h1:u7sFbgJ5sBEMYC/GwcMRyjRAd5NxTjBnbld5b0V5n98=
 github.com/gethinode/mod-utils/v2 v2.8.1/go.mod h1:GTYeknoLujNjfDxI+V9Dcug26CYJSTJ0B/U2dagw9oY=
 github.com/gethinode/mod-utils/v2 v2.8.2 h1:rKndAMmRBSO5Cgoa/2CvF5XchDSvLvd4TYAbfbbQVhE=
